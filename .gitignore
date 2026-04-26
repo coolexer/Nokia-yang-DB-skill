@@ -1,0 +1,21 @@
+# Local build cache (large JSONL.gz, intermediate uncompressed DBs)
+/tmp/yang_browser_cache/
+
+# Output of --pack-skill (the final zip is a build artifact, not source)
+/yang-browser.zip
+*.zip
+
+# Partial files from interrupted --update runs
+*.partial
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+.DS_Store
