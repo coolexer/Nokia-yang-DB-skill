@@ -324,6 +324,11 @@ def search(conn: sqlite3.Connection, *, query: str | None, platform: str | None,
     order_by = ""  # Only set when FTS is used — FTS5 exposes a `rank` column
                    # with BM25 scores; lower rank == better match.
 
+    # Bug fix: argparse passes "  " through as truthy; treat whitespace-only as empty
+    # so that --search "   " doesn't crash inside fts_query() with an empty token list.
+    if query and not query.strip():
+        query = None
+
     if query:
         if substring:
             where.append("(path LIKE ? OR path_prefix LIKE ? OR description LIKE ?)")
@@ -369,18 +374,41 @@ def search(conn: sqlite3.Connection, *, query: str | None, platform: str | None,
     return conn.execute(sql, params).fetchall()
 
 
+def _canonicalise_path(path: str) -> str:
+    """Normalise a YANG path so that list keys are in the canonical wildcard form.
+
+    The DB stores paths with `[key=*]` (wildcards). Users may paste paths with
+    concrete key values (e.g. `[router-name=Base]`) copied from a live device
+    via gNMI tools. Without normalisation, --is-supported would say
+    "path-unknown" for such paths even though the path-template exists.
+    """
+    import re as _r
+    # Replace [key=anything-but-]] with [key=*]
+    return _r.sub(r"(\[[^=\]]+=)[^\]]*\]", r"\1*]", path)
+
+
 def is_supported(conn: sqlite3.Connection, path: str,
                  platform_fragment: str) -> tuple[str, list[str], list[str]]:
     """Check whether the given YANG path is supported on platforms matching the fragment.
 
     Returns (status, supported, unsupported):
-      - status = "fully-supported"    => every matching platform supports the path
-      - status = "partially-supported"=> some do, some don't
-      - status = "not-supported"      => path exists, but none of the matching platforms support it
-      - status = "path-unknown"       => path not found, or platform fragment matches nothing
+      - status = "fully-supported"     => every matching platform supports the path
+      - status = "partially-supported" => some do, some don't
+      - status = "not-supported"       => path exists with a non-empty platform list,
+                                          but none of the matched platforms are in it
+      - status = "platform-agnostic"   => path exists in YANG, but Nokia's source data has
+                                          no platform list for it (~4.5% of SROS paths).
+                                          Likely a license- or MDA-gated feature; the path
+                                          is not actively excluded for the user's platform.
+      - status = "path-unknown"        => path not found, or platform fragment matches nothing
     `supported` and `unsupported` list platform names within the matched set.
+
+    The input path is canonicalised: any concrete list keys (e.g. `[name=Base]`)
+    are replaced with `[name=*]` so that paths copied from live devices match
+    the path-templates stored in the DB.
     """
-    row = conn.execute("SELECT platform_bits FROM paths WHERE path = ?", (path,)).fetchone()
+    canonical = _canonicalise_path(path)
+    row = conn.execute("SELECT platform_bits FROM paths WHERE path = ?", (canonical,)).fetchone()
     if row is None:
         return "path-unknown", [], []
 
@@ -388,6 +416,11 @@ def is_supported(conn: sqlite3.Connection, path: str,
     want_bits, want_names = platform_bitmask(conn, platform_fragment)
     if want_bits == 0:
         return "path-unknown", [], []
+
+    # Empty platforms list in source data: treat as platform-agnostic (don't claim
+    # the path is "not supported" — Nokia just didn't tag it).
+    if bits_have == 0:
+        return "platform-agnostic", [], sorted(want_names)
 
     have_names = set(platforms_for_row(conn, bits_have))
     supported = sorted(set(want_names) & have_names)
@@ -497,14 +530,16 @@ def support_matrix(conn: sqlite3.Connection, paths: list[str],
 
     result = []
     for path in paths:
-        row = conn.execute("SELECT platform_bits FROM paths WHERE path = ?", (path,)).fetchone()
+        canonical = _canonicalise_path(path)
+        row = conn.execute("SELECT platform_bits FROM paths WHERE path = ?", (canonical,)).fetchone()
         if row is None:
-            result.append((path + "  (path-unknown)",
+            result.append((canonical + "  (path-unknown)",
                            {n: False for n in want_names_sorted}))
             continue
         have = row["platform_bits"]
         per_plat = {n: bool(have & bit) for n, bit in name_to_bit.items()}
-        result.append((path, per_plat))
+        # Display the canonical form so the user sees what was actually queried
+        result.append((canonical, per_plat))
     return want_names_sorted, result
 
 
@@ -1234,7 +1269,8 @@ Examples:
                 continue
             for path, status, sup, unsup in data["results"]:
                 icon = {"fully-supported":"✓", "partially-supported":"◐",
-                        "not-supported":"✗", "path-unknown":"?"}.get(status, "?")
+                        "not-supported":"✗", "path-unknown":"?",
+                        "platform-agnostic":"~"}.get(status, "?")
                 summary = status.replace("-", " ")
                 print(f"  {icon} {path}")
                 print(f"      {summary}  (supported {len(sup)}, unsupported {len(unsup)})")
@@ -1299,7 +1335,8 @@ Examples:
             for c in containers:
                 status, sup, unsup = is_supported(conn, c["path"], args.platform)
                 icon = {"fully-supported":"✓","partially-supported":"◐",
-                        "not-supported":"✗","path-unknown":"?"}.get(status,"?")
+                        "not-supported":"✗","path-unknown":"?",
+                        "platform-agnostic":"~"}.get(status,"?")
                 print(f"  {icon} {c['path']}  — {status.replace('-',' ')} "
                       f"(sup={len(sup)}, unsup={len(unsup)})")
         return 0
@@ -1345,6 +1382,12 @@ Examples:
             print(f"  supported   ({len(supported)}): {', '.join(supported)}")
             print(f"  unsupported ({len(unsupported)}): {', '.join(unsupported)}")
             return 1
+        if status == "platform-agnostic":
+            print(f"PLATFORM-AGNOSTIC: {args.is_supported}")
+            print(f"  Path exists in YANG, but Nokia's source data has no platform list for it.")
+            print(f"  This usually means the path is license-gated, MDA-specific, or universally available")
+            print(f"  rather than restricted to specific platforms. Verify with the actual feature docs.")
+            return 0
         # not-supported
         print(f"NOT SUPPORTED on any matched platform ({len(unsupported)}): "
               f"{', '.join(unsupported)}")
