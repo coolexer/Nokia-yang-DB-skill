@@ -10,8 +10,9 @@ description: >
   multiple features × multiple platforms for Statement-of-Compliance documents. Also trigger when the user
   mentions "yang browser", "yangbrowser", "yang model", "platform support", "feature check" in the context
   of Nokia networking equipment. Covers the latest SR OS and SR Linux releases only
-  (currently SR OS 26.3.R1 and SR Linux 25.10.2). For older releases, rebuild the bundled database using
-  `--build`.
+  (currently SR OS 26.3.R2 and SR Linux 26.3.1). To update to newer Nokia releases,
+  run `python3 scripts/yang_browser.py --release` — it probes Nokia, rebuilds the
+  DBs, and repacks the skill zip.
 ---
 
 # Nokia YANG Browser Skill
