@@ -1,18 +1,16 @@
 ---
 name: yang-browser
 description: >
-  Check Nokia SR OS and SR Linux feature support by platform using YANG models from yangbrowser.nokia.com.
-  Use this skill whenever the user asks to check, verify, or look up whether a feature or protocol is supported
-  on a specific Nokia platform or hardware variant. Triggers include: checking YANG paths, verifying feature
-  support per platform (e.g. "does IXR-e3x support MSDP?", "is SRv6 available on 7750 SR-1s?"),
-  browsing YANG models for SR OS or SR Linux, comparing feature availability across platforms or releases,
-  looking up gNMI/YANG/NETCONF paths for a specific feature, building a support matrix of
-  multiple features × multiple platforms for Statement-of-Compliance documents. Also trigger when the user
-  mentions "yang browser", "yangbrowser", "yang model", "platform support", "feature check" in the context
-  of Nokia networking equipment. Covers the latest SR OS and SR Linux releases only
-  (currently SR OS 26.3.R2 and SR Linux 26.3.1). To update to newer Nokia releases,
-  run `python3 scripts/yang_browser.py --release` — it probes Nokia, rebuilds the
-  DBs, and repacks the skill zip.
+  Check Nokia SR OS and SR Linux feature support by platform using YANG models.
+  Use whenever the user asks to verify whether a feature, protocol, or YANG path
+  is supported on a specific Nokia platform or hardware variant — for example
+  "does IXR-e3x support MSDP?", "is SRv6 available on 7750 SR-1s?", looking up
+  gNMI/NETCONF paths for a feature, comparing platforms or releases, or building
+  a feature × platform matrix for Statement-of-Compliance documents. Also trigger
+  on "yang browser", "yang model", "platform support", "feature check" in a Nokia
+  networking context. Covers the latest SR OS and SR Linux releases only
+  (currently SR OS 26.3.R2 and SR Linux 26.3.1). To refresh data when newer
+  releases ship, run `python3 scripts/yang_browser.py --release`.
 ---
 
 # Nokia YANG Browser Skill
